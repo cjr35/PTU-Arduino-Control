@@ -12,18 +12,23 @@
 
 boolean go = false; // flag to stop execution of a script if an error is encountered
 boolean exe = false; // flag to ignore user commands while the Arduino is sending commands to the PTU
+boolean err = false; // flag to catch errors
 int count = 0; // count the number of PTU commands that have been sent
 String uCommand = ""; // a string to store user-entered commands
 
 void setup() {
-Serial.begin(9600); // establish serial connection between user and Arduino Mega
-Serial1.begin(9600); // establish serial connection between Arduino Mega and FLIR PTU-D300E
+
+  Serial.begin(9600); // establish serial connection between user and Arduino Mega
+  Serial1.begin(9600); // establish serial connection between Arduino Mega and FLIR PTU-D300E
+  
 }
 
 void loop() {
-  if (!exe) {
+
+  if (!exe) { // allow user action only if the Arduino is not currently running a script
+  
     uCommand = Serial.readString(); // recieve command from user end
-    uCommand.toUpperCase(); // so that the program is not case-sensitive
+    uCommand.toUpperCase();
 
     if (uCommand.equals("RUN")) {
       exe = true;
@@ -36,33 +41,47 @@ void loop() {
 }
 
 void serialEvent() { 
-  while(Serial1.available()){
+
+  while(Serial1.available()) {
     String err = Serial1.readString(); // receive string returned by the PTU after each command
     if (err.indexOf('!') == -1) {
       go = true; // if there is no error, allow the script to continue
     }
     else {
       Serial.println("PTU has encountered an error: " + err); // if there is an error, report it and halt the script
+      go = false;
       // send command to reset PTU or whatever
     }
   }
 }
 
-void getNextPTUCommand(int skip, String script) { // skips a number of commands and returns the next one in a script
-  String outStr = ""; // string to return 
-  char inChar = script.charAt(0); // check each char in the script to see if it is a delimiter (currently only using '\n')
+String getNextPTUCommand(int skip, String script) { // skips a number of commands and returns the next one in a script
+
+  const String delims = "\n"; // a string containing all allowed delimiters
+  char inChar = script.charAt(0); // used to check each char in the script (see below)
+  String nextCommand = ""; // string to return
+  
+  if (script.length() == 0) { // check that script is not null
+    return "ERR_NULL"; // stop execution and report error
+  }
+  
   while (skip > 0) { // the required number of commands have not been skipped
-    if (inChar == '\n') { // the end of a command has been found
+    if (delims.indexOf(inChar) >= 0) { // the end of a command has been found
       skip--;
     }
     script = script.substring(1); // the first char is removed so that charAt(0) gets the next one
+    if (script.length() == 0) { // end of the script has been reached prematurely
+      return "ERR_END"; // stop exectution and report error
+    }
     inChar = script.charAt(0);
   } // after the loop, the first command in the remainder of the script is the one that should be sent
-  while (inChar != '\n') { // loop through the script and record each char until the delimiter is found
-    outStr += inChar;
+  
+  while (delims.indexOf(inChar) < 0) { // loop through the script and record each char until a delimiter is found
+    nextCommand += inChar;
     script = script.substring(1);
     inChar = script.charAt(0);
   }
+  
   go = false; // stop the script temporarily to wait for the PTU's response
-  return outStr;
+  return nextCommand;
 }
