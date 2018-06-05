@@ -1,6 +1,6 @@
 # PTU-Arduino-Control
 
-To do list:
+To do list:\n
   Short term:
     - pevent StringIndexOutOfBounds exception
     - stop when END command is reached
