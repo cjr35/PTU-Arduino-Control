@@ -14,7 +14,16 @@ boolean go = false; // flag to stop execution of a script if an error is encount
 boolean exe = false; // flag to ignore user commands while the Arduino is sending commands to the PTU
 boolean err = false; // flag to catch errors
 int count = 0; // count the number of PTU commands that have been sent
+int loops = 0; // allow user to loop scripts that end with "LOOP"
 String uCommand = ""; // a string to store user-entered commands
+String pCommand = ""; // a string to store commands sent to the PTU
+String errorMsg = ""; // a string to deliver error messages to the user
+
+struct Script {
+  String list
+}
+
+Script A { "PP\nOS\nEND" };
 
 void setup() {
 
@@ -24,33 +33,106 @@ void setup() {
 }
 
 void loop() {
-
-  if (!exe) { // allow user action only if the Arduino is not currently running a script
   
-    uCommand = Serial.readString(); // recieve command from user end
-    uCommand.toUpperCase();
+  uCommand = Serial.readString(); // recieve command from user end
+  uCommand.toUpperCase();
 
-    if (uCommand.equals("RUN")) {
+  if (uCommand.equals("STOP")) {
+    Serial1.write("H\n");
+  }
+   
+  if (!exe) { // ignore most user actions if the Arduino is currently running a script
+
+    if (uCommand.startsWith("RUN")) {
+      Script activeScript = { "" };
       exe = true;
-      getNextPTUCommand(count, "ONE OF THE SCRIPTS");
-      // keep track of count
-      // stop and reset if gNC returns END
-      // loop depending on value of go
+      go = true;
+      
+      if (uCommand.equals("RUN A")) {
+        activeScript = A;
+      }
+      
+      // else if chain for other scripts
+      
+      loops = activeScript.list.indexOf("LOOP")
+      if (loops != -1) {
+        String loopString = activeScript.list.substring(loops + 4);
+        loops = getAssocInt(loopString);
+      }
+    }
+    
+    else if (uCommand.equals("COMMANDS")){
+      // print available commands
+    }
+    
+    else if (!uCommand.equals("")) {
+      Serial.println("Invalid command");
     }
   }
+  else if (go) {
+    pCommand = getNextPTUCommand(count, activeScript.list);
+    if (/*pCommand is a valid PTU command*/) {
+      Serial1.write(pCommand + "\n");
+      count++;
+    }
+    else if (pCommand.equals("END")) {
+      resetVars()
+    }
+    else if (pCommand.startsWith("LOOP")) {
+      loops--;
+      if (loops > 0) {
+        count = 0;
+      }
+      else if (loops == 0) {
+        exe = false;
+        count = 0;
+      }
+      else if (loops < 0) {
+        loops = 0;
+        count = 0;
+      }
+    }
+    else if (pCommand.startsWith("PAUSE")) {
+      int time = getAssocInt(pCommand.substring(5))
+      if (time == 0) {
+        String res = "";
+        Serial.println("Script suspended... enter RESUME or PTU commands");
+        while (!res.equals("RESUME")) {
+          res = Serial.readString();
+          res.toUpperCase();
+          if (/*res is a valid PTU command*/) {
+            Serial1.write(res + "\n");
+            serialEvent();
+          }
+          else if (!res.equals("RESUME") && !res.equals("")) {
+            Serial.println("Invalid command");
+          }
+        }
+      }
+      delay(time);
+    }
+    else if (pCommand.startsWith("ERROR:")) {
+      err = true;
+      errorMsg = pCommand;
+    }
+  }
+  if (err) {
+    resetVars();
+  }
+  
+  serialEvent();
 }
 
 void serialEvent() { 
 
   while(Serial1.available()) {
-    String err = Serial1.readString(); // receive string returned by the PTU after each command
-    if (err.indexOf('!') == -1) {
+    String inStr = Serial1.readString(); // receive string returned by the PTU after each command
+    if (inStr.indexOf('!') == -1) {
       go = true; // if there is no error, allow the script to continue
     }
     else {
-      Serial.println("PTU has encountered an error: " + err); // if there is an error, report it and halt the script
-      go = false;
-      // send command to reset PTU or whatever
+      err = true; // if there is an error, report it and halt the script
+      errorMsg = "ERROR: PTU error with the message: " + inStr;
     }
   }
 }
@@ -62,21 +144,25 @@ String getNextPTUCommand(int skip, String script) { // skips a number of command
   String nextCommand = ""; // string to return
   
   if (script.length() == 0) { // check that script is not null
-    return "ERR_NULL"; // stop execution and report error
+    return "ERROR: Requested script is null"; // stop execution and report error
+  }
+
+  if (delims.indexOf(script.charAt(script.length() - 1)) == -1) { // script does not end with a valid delim
+    return "ERROR: Requested script does not end with a valid delimiter"; // stop execution and report error
   }
   
   while (skip > 0) { // the required number of commands have not been skipped
-    if (delims.indexOf(inChar) >= 0) { // the end of a command has been found
+    if (delims.indexOf(inChar) != -1) { // the end of a command has been found
       skip--;
     }
     script = script.substring(1); // the first char is removed so that charAt(0) gets the next one
     if (script.length() == 0) { // end of the script has been reached prematurely
-      return "ERR_END"; // stop exectution and report error
+      return "ERROR: Reached end of script while parsing"; // stop exectution and report error
     }
     inChar = script.charAt(0);
   } // after the loop, the first command in the remainder of the script is the one that should be sent
   
-  while (delims.indexOf(inChar) < 0) { // loop through the script and record each char until a delimiter is found
+  while (delims.indexOf(inChar) == -1) { // loop through the script and record each char until a delimiter is found
     nextCommand += inChar;
     script = script.substring(1);
     inChar = script.charAt(0);
@@ -84,4 +170,41 @@ String getNextPTUCommand(int skip, String script) { // skips a number of command
   
   go = false; // stop the script temporarily to wait for the PTU's response
   return nextCommand;
+}
+
+int getAssocInt(String s) {
+  int endIndex = 0;
+  String nums = "0123456789";
+  String outStr = "";
+  while (true) {
+    if (nums.indexOf(s.charAt(endIndex)) == -1) {
+      outStr = s.substring(0, endIndex);
+      if (outStr.equals("")) {
+        err = true;
+        errorMsg = "ERROR: LOOP or PAUSE command missing number";
+        return -1;
+      }
+      return outStr.toInt();
+    }
+    endIndex++;
+    if (endIndex == s.length()) {
+      outStr = s.substring(0, endIndex);
+      return outStr.toInt();
+    }
+  }
+}
+
+void resetVars() {
+  if (err) {
+    Serial.println(errorMsg + "\nThe PTU will now reset.");
+    Serial1.write("RE\n");
+  }
+  go = false;
+  exe = false;
+  err = false;
+  count = 0;
+  loops = 0;
+  uCommand = "";
+  pCommand = "";
+  errorMsg = "";
 }
