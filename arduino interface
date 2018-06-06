@@ -13,9 +13,11 @@
 boolean go = false; // flag to stop execution of a script if an error is encountered
 boolean exe = false; // flag to ignore user commands while the Arduino is sending commands to the PTU
 boolean err = false; // flag to catch errors
+boolean validity; //flag to test if input command is a valid command
+int x=0;
 int count = 0; // count the number of PTU commands that have been sent
 String uCommand = ""; // a string to store user-entered commands
-char* myStrings[]={"PP","TP","PO","TO","PR","TR","A","RCD","XS","XG","XC","M","ME","MD","MQ","MS","I","S","H","HP","HT","MB","PS","TS","PD","PD","TD","PA","B","TA","PB","TB","PU","PL","TU","TL","C","CI","CV","PC","PCD","PCE","PN","PX","TN","TX","PNU","NXU","TNU","TXU","L","LE","LD","LU","R","RD","RT","RP","RE","RPS","F","FV","FT","V","E","RTS","DS","DR","DF","EE","ED","PH","PHR","PHL","PHO","TH","THR","THL","THO","PM","PMH","PMR","PML","TM","TMH","TMR","TML","O","@","@A","@B","IOCHA","IODR","IOGND","IOTTLR","_<id>","U","IO","IOCHB","IODS","IOHOST","IOTTLT","JE","JD","IOA","IODF","IOOP","IOPT-","NA","NI","NM","NMS","NMD","NG","NN","NS","BT","CEC","RQ","CNT","CT","CNF","IQ","GC","GDR","GS","GA","GR","GRPY","GMN","GG","GGT","GCQ","GDS","GL","GLLA","GP","GM","GMD","GGD","GDF","GT","GO","GCP","GY","GMA","GMC","GMF","QP","QA","QPE","QPD","NFU","NFI","NFO","NFC","NFF","NFA","CM","CME","CMD","CNT"}; // LIST OF EACH COMMAND STORED IN ARRAY
+char* commandList[]={"PP","TP","PO","TO","PR","TR","A","RCD","XS","XG","XC","M","ME","MD","MQ","MS","I","S","H","HP","HT","MB","PS","TS","PD","PD","TD","PA","B","TA","PB","TB","PU","PL","TU","TL","C","CI","CV","PC","PCD","PCE","PN","PX","TN","TX","PNU","NXU","TNU","TXU","L","LE","LD","LU","R","RD","RT","RP","RE","RPS","F","FV","FT","V","E","RTS","DS","DR","DF","EE","ED","PH","PHR","PHL","PHO","TH","THR","THL","THO","PM","PMH","PMR","PML","TM","TMH","TMR","TML","O","@","@A","@B","IOCHA","IODR","IOGND","IOTTLR","_<id>","U","IO","IOCHB","IODS","IOHOST","IOTTLT","JE","JD","IOA","IODF","IOOP","IOPT-","NA","NI","NM","NMS","NMD","NG","NN","NS","BT","CEC","RQ","CNT","CT","CNF","IQ","GC","GDR","GS","GA","GR","GRPY","GMN","GG","GGT","GCQ","GDS","GL","GLLA","GP","GM","GMD","GGD","GDF","GT","GO","GCP","GY","GMA","GMC","GMF","QP","QA","QPE","QPD","NFU","NFI","NFO","NFC","NFF","NFA","CM","CME","CMD","CNT"}; // LIST OF EACH COMMAND STORED IN ARRAY
 
 void setup() {
 
@@ -38,6 +40,13 @@ void loop() {
       // stop and reset if gNC returns END
       // loop depending on value of go
     }
+     
+     else if (uCommand != "") {
+        checkValidity(uCommand);
+        //if validity== 1 send data to ptu unit
+        //read ptu response
+      }
+    
   }
 }
 
@@ -85,4 +94,25 @@ String getNextPTUCommand(int skip, String script) { // skips a number of command
   
   go = false; // stop the script temporarily to wait for the PTU's response
   return nextCommand;
+}
+
+void checkValidity(String inputCommand){
+  
+  validity = false;
+  for (x=0; x<120; x=x+1){
+    
+   
+    if (inputCommand.equals(commandList[x])){
+      validity = true;
+      x=120;
+    }        
+  }
+    
+    if (validity == true) {
+      Serial.println (inputCommand + " VALID COMMAND");
+    }
+
+     else {
+       Serial.println (inputCommand + " INVALID COMMAND");
+     }
 }
