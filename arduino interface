@@ -18,18 +18,23 @@ int loops = 0; // allow user to loop scripts that end with "LOOP"
 String uCommand = ""; // a string to store user-entered commands
 String pCommand = ""; // a string to store commands sent to the PTU
 String errorMsg = ""; // a string to deliver error messages to the user
+const String readyMsg = "Ready to begin";
 
 struct Script {
-  String list
-}
+  String list;
+};
 
-Script A { "PP\nOS\nEND" };
+Script activeScript = { "" };
+
+const Script A { "PP2500\nPAUSE300\nPP\nPP1250\nPAUSE0\nEND" }; // 
 
 void setup() {
 
   Serial.begin(9600); // establish serial connection between user and Arduino Mega
   Serial1.begin(9600); // establish serial connection between Arduino Mega and FLIR PTU-D300E
-  
+
+  Serial.println(readyMsg);
+  Serial.println("Enter \"COMMANDS\" for a list of available commands");
 }
 
 void loop() {
@@ -37,98 +42,125 @@ void loop() {
   uCommand = Serial.readString(); // recieve command from user end
   uCommand.toUpperCase();
 
-  if (uCommand.equals("STOP")) {
+  if (uCommand.equals("STOP")) { // absolute halt by user
     Serial1.write("H\n");
+    resetVars();
   }
    
   if (!exe) { // ignore most user actions if the Arduino is currently running a script
 
-    if (uCommand.startsWith("RUN")) {
-      Script activeScript = { "" };
-      exe = true;
+    if (uCommand.startsWith("RUN")) { // user wants to run some script
       go = true;
+      exe = true;
       
       if (uCommand.equals("RUN A")) {
-        activeScript = A;
+        activeScript = A; // set the active script
+        if (activeScript.list.indexOf("LOOP") != -1) { // check for a LOOP command
+         loops = getAssocInt(activeScript.list.substring(loops)); // if there is, store the number of loops
+       }
       }
       
       // else if chain for other scripts
-      
-      loops = activeScript.list.indexOf("LOOP")
-      if (loops != -1) {
-        String loopString = activeScript.list.substring(loops + 4);
-        loops = getAssocInt(loopString);
+     
+      else { // uCommand does not match any valid RUN command
+        err = true;
+        errorMsg = "ERROR: Invalid RUN command";
+        resetVars();
       }
+      
     }
     
     else if (uCommand.equals("COMMANDS")){
-      // print available commands
+      printCommands();
     }
     
-    else if (!uCommand.equals("")) {
+    else if (!uCommand.equals("")) { // notify the user if their command is invalid
       Serial.println("Invalid command");
     }
   }
-  else if (go) {
+  
+  else if (go) { 
     pCommand = getNextPTUCommand(count, activeScript.list);
-    if (/*pCommand is a valid PTU command*/) {
-      Serial1.write(pCommand + "\n");
-      count++;
+    if (true) { // if pCommand is a valid PTU command
+      Serial1.println(pCommand);
+      count++; // keep track of how many commands have already been executed 
     }
-    else if (pCommand.equals("END")) {
-      resetVars()
+    
+    else if (pCommand.equals("END")) { // ready to run a new script
+      resetVars();
     }
-    else if (pCommand.startsWith("LOOP")) {
+    
+    else if (pCommand.startsWith("LOOP")) { // reached a loop point
       loops--;
-      if (loops > 0) {
+      if (loops > 0) { // zero count to let the script start from the top again
         count = 0;
       }
-      else if (loops == 0) {
-        exe = false;
-        count = 0;
+      else if (loops == 0) { // done looping, equivalent to END
+        resetVars();
       }
-      else if (loops < 0) {
+      else if (loops < 0) { // loops must have started at 0, allows infinite loop
         loops = 0;
         count = 0;
       }
     }
+    
     else if (pCommand.startsWith("PAUSE")) {
-      int time = getAssocInt(pCommand.substring(5))
-      if (time == 0) {
-        String res = "";
-        Serial.println("Script suspended... enter RESUME or PTU commands");
-        while (!res.equals("RESUME")) {
-          res = Serial.readString();
-          res.toUpperCase();
-          if (/*res is a valid PTU command*/) {
-            Serial1.write(res + "\n");
+      int time = getAssocInt(pCommand);
+      if (time == 0) { // allow indeterminant pause
+        String pauseCommand = "";
+        Serial.println("Script suspended...\n\nWARNING!\nThe PTU uses absolute positioning and will execute the rest of the script EXACTLY after resuming!\nEnter \"OK\" to continue");
+        
+        while (!pauseCommand.equals("OK")) { // user must read the warning
+          pauseCommand = Serial.readString();
+        }
+
+        while (!pauseCommand.equals("RESUME")) { // wait for user to resume, parse commands in the meantime
+          pauseCommand = Serial.readString();
+          pauseCommand.toUpperCase();
+          
+          if (true) { // if pauseCommand is a valid PTU command
+            Serial1.println(pauseCommand);
             serialEvent();
           }
-          else if (!res.equals("RESUME") && !res.equals("")) {
+          else if (pauseCommand.equals("STOP")) {
+            Serial1.write("H\n");
+          }
+          else if (pauseCommand.equals("COMMANDS")) {
+            printCommands();
+          }
+          else if (!pauseCommand.equals("RESUME") && !pauseCommand.equals("")) {
             Serial.println("Invalid command");
           }
         }
       }
-      delay(time);
+      delay(time); // no else block because delay(0) won't delay at all
     }
+    
     else if (pCommand.startsWith("ERROR:")) {
       err = true;
       errorMsg = pCommand;
     }
   }
+  
   if (err) {
     resetVars();
   }
-  
+  Serial.println("loop end");
   serialEvent();
 }
 
 void serialEvent() { 
+  Serial.println("serialevent start");
+  while (!Serial1.available()) {
+    // delay until there is a response from the PTU
+    Serial.println("Serial1 unavailable");
+  }
 
-  while(Serial1.available()) {
+  while (Serial1.available()) {
     String inStr = Serial1.readString(); // receive string returned by the PTU after each command
     if (inStr.indexOf('!') == -1) {
       go = true; // if there is no error, allow the script to continue
+      Serial.println(inStr); // give the user feedback from the PTU
     }
     else {
       err = true; // if there is an error, report it and halt the script
@@ -175,27 +207,68 @@ String getNextPTUCommand(int skip, String script) { // skips a number of command
 int getAssocInt(String s) {
   int endIndex = 0;
   String nums = "0123456789";
+  String sNum = "";
   String outStr = "";
-  while (true) {
-    if (nums.indexOf(s.charAt(endIndex)) == -1) {
-      outStr = s.substring(0, endIndex);
-      if (outStr.equals("")) {
-        err = true;
-        errorMsg = "ERROR: LOOP or PAUSE command missing number";
-        return -1;
-      }
-      return outStr.toInt();
+
+  if (s.length() == 0) { // this should not happen
+    err = true;
+    errorMsg = "ERROR: Coding error";
+    return -1;
+  }
+
+  for (int i = 0; sNum.equals(""); i++) { // trim the text of the command off the beginning
+    if (i == s.length()) {
+      err = true;
+      errorMsg = "ERROR: Command missing number: " + s; // LOOP or PAUSE w/out number or incorrectly passed pCommand
+      return -1;
+    }
+    if (nums.indexOf(s.charAt(i)) != -1) { // once a number is found, break the loop
+      sNum = s.substring(i);
+    }
+  }
+  
+  while (true) { // keep parsing the string until an answer is found no matter what
+    if (nums.indexOf(sNum.charAt(endIndex)) == -1) { // if a non-number character is found, cut off the string there
+      sNum = sNum.substring(0, endIndex);
+      return sNum.toInt();
     }
     endIndex++;
-    if (endIndex == s.length()) {
-      outStr = s.substring(0, endIndex);
+    if (endIndex == sNum.length()) { // if the end of the string is reached and only numbers are found, return the whole thing
+      outStr = sNum;
       return outStr.toInt();
     }
   }
 }
 
+void printCommands() {
+  Serial.println("Note: Commands are not case-sensitive\n\nUser Commands:");
+  Serial.println("RUN X .... Run a script. Only available when the PTU is not running a script.");
+  Serial.println("STOP ..... Immediately halt the PTU at any time");
+  Serial.println("RESUME ... Resume script from where it was left off. Only available when a script has been suspended by a PAUSE0 command.");
+  Serial.println("\nCustom PTU Commands (Can only be used when writing a script):");
+  Serial.println("END ...... Tells the controller that the script is over.");
+  Serial.println("LOOP# .... Replaces END and loops the script as many times as specified. Use LOOP0 for an infinite loop that can only be ended by a STOP command.");
+  Serial.println("PAUSE# ... Stops commands from being sent to the PTU for the specified time in milliseconds. Use PAUSE0 to suspend a script and allow manual commands.");
+  Serial.println("\nSee FLIR PTU E-Series Command Reference Manual v7.00 for a full list and description of supported commands.");
+}
+
 void resetVars() {
-  if (err) {
+  if (!err) {
+    Serial.println("The PTU has halted or reached the end of a script. Reset? (Y/N)");
+    String reset = "";
+    while (true) {
+      reset = Serial.readString();
+      reset.toUpperCase();
+      if (reset.equals("Y")) {
+        Serial1.write("RE\n");
+        break;
+      }
+      else if (reset.equals("N")) {
+        break;
+      }
+    }
+  }
+  else {
     Serial.println(errorMsg + "\nThe PTU will now reset.");
     Serial1.write("RE\n");
   }
@@ -207,4 +280,7 @@ void resetVars() {
   uCommand = "";
   pCommand = "";
   errorMsg = "";
+  activeScript = { "" };
+
+  Serial.println(readyMsg);
 }
