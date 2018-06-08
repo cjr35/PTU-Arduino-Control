@@ -292,22 +292,33 @@ void resetVars() {
   Serial.println(readyMsg);
 }
 
-boolean checkValidity(String inputCommand){
-  
+boolean checkValidity(String inCommand){
+  String outCommand="";
+  String removeList="0123456789-";
   boolean validity = false;
-  for (int x = 0; x < 120; x++){
-    if (inputCommand.equals(commandList[x])){
-      validity = true;
-      x = 120;
-    }        
-  }
-    
-  if (validity == true) {
-    Serial.println (inputCommand + " VALID COMMAND");
-  }
 
+  for (int a=0; outCommand.equals(""); a++) { //remove the invalid characters from the end of the command
+    if (removeList.indexOf(inCommand.charAt(a)) != -1) {
+      inCommand.remove(a);
+      outCommand=inCommand;
+      if (outCommand.length()==0) {
+        Serial.println("ERROR:COMMAND BEGAN WITH INVALID CHARACTER");
+        return false;
+      }
+    }
+  }
+  
+  for (int x = 0; x < 120; x++) { //Check trimmed input against valid commands list
+    if (inCommand.equals(commandList[x])) {
+      validity=true;
+      x=120;   
+    }
+  }
+  if (validity==true) {
+    Serial.println(inCommand + " VALID COMMAND");
+  }
   else {
-    Serial.println (inputCommand + " INVALID COMMAND");
+    Serial.println(inCommand + " INVALID COMMAND");
   }
   return validity;
 }
