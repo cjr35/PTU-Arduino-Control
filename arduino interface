@@ -51,7 +51,11 @@ void loop() {
    
   if (!exe) { // ignore most user actions if the Arduino is currently running a script
 
-    if (uCommand.startsWith("RUN")) { // user wants to run some script
+    if (uCommand.equals("")) {
+        // do nothing
+      }
+
+    else if (uCommand.startsWith("RUN")) { // user wants to run some script
       go = true;
       exe = true;
       
@@ -73,22 +77,24 @@ void loop() {
 
     else if (checkValidity(uCommand)) { // if the user is directly entering PTU commands
       Serial1.println(uCommand);
+      serialEvent();
     }
     
     else if (uCommand.equals("COMMANDS")){
       printCommands();
     }
     
-    else if (!uCommand.equals("")) { // notify the user if their command is invalid
+    else { // notify the user if their command is invalid
       Serial.println("Invalid command");
     }
   }
   
   else if (go) { 
     pCommand = getNextPTUCommand(count, activeScript.list);
-    if (true) { // if pCommand is a valid PTU command
+    if (checkValidity(pCommand)) { // if pCommand is a valid PTU command
       Serial1.println(pCommand);
-      count++; // keep track of how many commands have already been executed 
+      count++; // keep track of how many commands have already been executed
+      serialEvent();
     }
     
     else if (pCommand.equals("END")) { // ready to run a new script
@@ -122,8 +128,11 @@ void loop() {
         while (!pauseCommand.equals("RESUME")) { // wait for user to resume, parse commands in the meantime
           pauseCommand = Serial.readString();
           pauseCommand.toUpperCase();
-          
-          if (checkValidity(pauseCommand)) { // if pauseCommand is a valid PTU command
+
+          if (pauseCommand.equals("")) {
+            // do nothing
+          }
+          else if (checkValidity(pauseCommand)) { // if pauseCommand is a valid PTU command
             Serial1.println(pauseCommand);
             serialEvent();
           }
@@ -133,7 +142,7 @@ void loop() {
           else if (pauseCommand.equals("COMMANDS")) {
             printCommands();
           }
-          else if (!pauseCommand.equals("RESUME") && !pauseCommand.equals("")) {
+          else if (!pauseCommand.equals("RESUME")) {
             Serial.println("Invalid command");
           }
         }
@@ -151,15 +160,11 @@ void loop() {
     resetVars();
   }
   
-  Serial.println("loop end");
-  serialEvent();
 }
 
 void serialEvent() { 
-  Serial.println("serialevent start");
   while (!Serial1.available()) {
     // delay until there is a response from the PTU
-    Serial.println("Serial1 unavailable");
   }
 
   while (Serial1.available()) {
@@ -268,6 +273,7 @@ void resetVars() {
       reset.toUpperCase();
       if (reset.equals("Y")) {
         Serial1.write("RE\n");
+        serialEvent();
         break;
       }
       else if (reset.equals("N")) {
@@ -278,6 +284,7 @@ void resetVars() {
   else {
     Serial.println(errorMsg + "\nThe PTU will now reset.");
     Serial1.write("RE\n");
+    serialEvent();
   }
   go = false;
   exe = false;
@@ -297,12 +304,17 @@ boolean checkValidity(String inCommand){
   String removeList="0123456789-";
   boolean validity = false;
 
+  if (inCommand.startsWith("IOPT-")) {
+    return true;
+  }
+  
   for (int a=0; outCommand.equals(""); a++) { //remove the invalid characters from the end of the command
     if (removeList.indexOf(inCommand.charAt(a)) != -1) {
       inCommand.remove(a);
       outCommand=inCommand;
       if (outCommand.length()==0) {
-        Serial.println("ERROR:COMMAND BEGAN WITH INVALID CHARACTER");
+        err = true;
+        errorMsg = "ERROR: COMMAND BEGAN WITH INVALID CHARACTER";
         return false;
       }
     }
