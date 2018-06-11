@@ -37,6 +37,7 @@ void setup() {
 
   Serial.println(readyMsg);
   Serial.println("Enter \"COMMANDS\" for a list of available commands");
+  
 }
 
 void loop() {
@@ -167,8 +168,12 @@ void serialEvent() {
     // delay until there is a response from the PTU
   }
 
+  String inStr = "";
+
   while (Serial1.available()) {
-    String inStr = Serial1.readString(); // receive string returned by the PTU after each command
+    do {
+      inStr += Serial1.readString();
+    } while (inStr.charAt(inStr.length() - 1) != '\n');
     if (inStr.indexOf('!') == -1) {
       go = true; // if there is no error, allow the script to continue
       Serial.println(inStr); // give the user feedback from the PTU
@@ -299,20 +304,20 @@ void resetVars() {
   Serial.println(readyMsg);
 }
 
-boolean checkValidity(String inCommand){
-  String outCommand="";
-  String removeList="0123456789-";
+boolean checkValidity(String inCommand) {
+  String outCommand = "";
+  String removeList = "0123456789-";
   boolean validity = false;
 
   if (inCommand.startsWith("IOPT-")) {
     return true;
   }
   
-  for (int a=0; outCommand.equals(""); a++) { //remove the invalid characters from the end of the command
+  for (int a = 0; outCommand.equals(""); a++) { // remove the invalid characters from the end of the command
     if (removeList.indexOf(inCommand.charAt(a)) != -1) {
       inCommand.remove(a);
-      outCommand=inCommand;
-      if (outCommand.length()==0) {
+      outCommand = inCommand;
+      if (outCommand.length() == 0) {
         err = true;
         errorMsg = "ERROR: COMMAND BEGAN WITH INVALID CHARACTER";
         return false;
@@ -320,17 +325,17 @@ boolean checkValidity(String inCommand){
     }
   }
   
-  for (int x = 0; x < 120; x++) { //Check trimmed input against valid commands list
+  for (int x = 0; x < 120; x++) { // Check trimmed input against valid commands list
     if (inCommand.equals(commandList[x])) {
-      validity=true;
-      x=120;   
+      validity = true;
+      x = 120;   
     }
   }
-  if (validity==true) {
-    Serial.println(inCommand + " VALID COMMAND");
+  if (validity == true) {
+    Serial.println(inCommand + ": VALID COMMAND");
   }
   else {
-    Serial.println(inCommand + " INVALID COMMAND");
+    Serial.println(inCommand + ": INVALID COMMAND");
   }
   return validity;
 }
