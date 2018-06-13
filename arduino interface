@@ -26,13 +26,29 @@ struct Script {
 
 Script activeScript = { "" };
 
-const Script A { "PP2500\nPAUSE300\nPP\nPP1250\nPAUSE0\nEND" }; // 
+const Script A { "PP5000\nPAUSE5000\nPP1250\nPAUSE0\nPP3750\nEND\n" }; // 
 
-const char* commandList[]={"PP","TP","PO","TO","PR","TR","A","RCD","XS","XG","XC","M","ME","MD","MQ","MS","I","S","H","HP","HT","MB","PS","TS","PD","PD","TD","PA","B","TA","PB","TB","PU","PL","TU","TL","C","CI","CV","PC","PCD","PCE","PN","PX","TN","TX","PNU","NXU","TNU","TXU","L","LE","LD","LU","R","RD","RT","RP","RE","RPS","F","FV","FT","V","E","RTS","DS","DR","DF","EE","ED","PH","PHR","PHL","PHO","TH","THR","THL","THO","PM","PMH","PMR","PML","TM","TMH","TMR","TML","O","@","@A","@B","IOCHA","IODR","IOGND","IOTTLR","_<id>","U","IO","IOCHB","IODS","IOHOST","IOTTLT","JE","JD","IOA","IODF","IOOP","IOPT-","NA","NI","NM","NMS","NMD","NG","NN","NS","BT","CEC","RQ","CNT","CT","CNF","IQ","GC","GDR","GS","GA","GR","GRPY","GMN","GG","GGT","GCQ","GDS","GL","GLLA","GP","GM","GMD","GGD","GDF","GT","GO","GCP","GY","GMA","GMC","GMF","QP","QA","QPE","QPD","NFU","NFI","NFO","NFC","NFF","NFA","CM","CME","CMD","CNT"}; // LIST OF EACH COMMAND STORED IN ARRAY
+const char* commandList[] = { "PP",     "TP",     "PO",   "TO",    "PR",     "TR",    "A",    "RCD",   "XS",    "XG",
+                              "XC",     "M",      "ME",   "MD",    "MQ",     "MS",    "I",    "S",     "H",     "HP",
+                              "HT",     "MB",     "PS",   "TS",    "PD",     "PD",    "TD",   "PA",    "B",     "TA",
+                              "PB",     "TB",     "PU",   "PL",    "TU",     "TL",    "C",    "CI",    "CV",    "PC",
+                              "PCD",    "PCE",    "PN",   "PX",    "TN",     "TX",    "PNU",  "NXU",   "TNU",   "TXU",
+                              "L",      "LE",     "LD",   "LU",    "R",      "RD",    "RT",   "RP",    "RE",    "RPS",
+                              "F",      "FV",     "FT",   "V",     "E",      "RTS",   "DS",   "DR",    "DF",    "EE",
+                              "ED",     "PH",     "PHR",  "PHL",   "PHO",    "TH",    "THR",  "THL",   "THO",   "PM",
+                              "PMH",    "PMR",    "PML",  "TM",    "TMH",    "TMR",   "TML",  "O",     "@",     "@A",
+                              "@B",     "IOCHA",  "IODR", "IOGND", "IOTTLR", "_<id>", "U",    "IO",    "IOCHB", "IODS",
+                              "IOHOST", "IOTTLT", "JE",   "JD",    "IOA",    "IODF",  "IOOP", "IOPT-", "NA",    "NI",
+                              "NM",     "NMS",    "NMD",  "NG",    "NN",     "NS",    "BT",   "CEC",   "RQ",    "CNT",
+                              "CT",     "CNF",    "IQ",   "GC",    "GDR",    "GS",    "GA",   "GR",    "GRPY",  "GMN",
+                              "GG",     "GGT",    "GCQ",  "GDS",   "GL",     "GLLA",  "GP",   "GM",    "GMD",   "GGD",
+                              "GDF",    "GT",     "GO",   "GCP",   "GY",     "GMA",   "GMC",  "GMF",   "QP",    "QA",
+                              "QPE",    "QPD",    "NFU",  "NFI",   "NFO",    "NFC",   "NFF",  "NFA",   "CM",    "CME",
+                              "CMD" };
 
 void setup() {
 
-  Serial.begin(9600); // establish serial connection between user and Arduino Mega
+  Serial.begin(9600);  // establish serial connection between user and Arduino Mega
   Serial1.begin(9600); // establish serial connection between Arduino Mega and FLIR PTU-D300E
 
   Serial.println(readyMsg);
@@ -62,8 +78,9 @@ void loop() {
       
       if (uCommand.equals("RUN A")) {
         activeScript = A; // set the active script
-        if (activeScript.list.indexOf("LOOP") != -1) { // check for a LOOP command
-         loops = getAssocInt(activeScript.list.substring(loops)); // if there is, store the number of loops
+        int loopIndex = activeScript.list.indexOf("LOOP");
+        if (loopIndex != -1) { // check for a LOOP command
+         loops = getAssocInt(activeScript.list.substring(loopIndex)); // if there is, store the number of loops
        }
       }
       
@@ -76,9 +93,8 @@ void loop() {
       }
     }
 
-    else if (checkValidity(uCommand)) { // if the user is directly entering PTU commands
-      Serial1.println(uCommand);
-      serialEvent();
+    else if (checkValidity(uCommand, 79)) { // if the user is directly entering PTU commands
+      sendPTUCommand(uCommand);
     }
     
     else if (uCommand.equals("COMMANDS")){
@@ -92,10 +108,9 @@ void loop() {
   
   else if (go) { 
     pCommand = getNextPTUCommand(count, activeScript.list);
-    if (checkValidity(pCommand)) { // if pCommand is a valid PTU command
-      Serial1.println(pCommand);
+    if (checkValidity(pCommand, 94)) { // if pCommand is a valid PTU command
+      sendPTUCommand(pCommand);
       count++; // keep track of how many commands have already been executed
-      serialEvent();
     }
     
     else if (pCommand.equals("END")) { // ready to run a new script
@@ -106,6 +121,7 @@ void loop() {
       loops--;
       if (loops > 0) { // zero count to let the script start from the top again
         count = 0;
+        go = true;
       }
       else if (loops == 0) { // done looping, equivalent to END
         resetVars();
@@ -113,12 +129,13 @@ void loop() {
       else if (loops < 0) { // loops must have started at 0, allows infinite loop
         loops = 0;
         count = 0;
+        go = true;
       }
     }
     
     else if (pCommand.startsWith("PAUSE")) {
-      int time = getAssocInt(pCommand);
-      if (time == 0) { // allow indeterminant pause
+      int pauseTime = getAssocInt(pCommand);
+      if (pauseTime == 0) { // allow indeterminant pause
         String pauseCommand = "";
         Serial.println("Script suspended...\n\nWARNING!\nThe PTU uses absolute positioning and will execute the rest of the script EXACTLY after resuming!\nEnter \"OK\" to continue");
         
@@ -133,12 +150,12 @@ void loop() {
           if (pauseCommand.equals("")) {
             // do nothing
           }
-          else if (checkValidity(pauseCommand)) { // if pauseCommand is a valid PTU command
-            Serial1.println(pauseCommand);
-            serialEvent();
+          else if (checkValidity(pauseCommand, 134)) { // if pauseCommand is a valid PTU command
+            sendPTUCommand(pauseCommand);
           }
           else if (pauseCommand.equals("STOP")) {
             Serial1.write("H\n");
+            resetVars();
           }
           else if (pauseCommand.equals("COMMANDS")) {
             printCommands();
@@ -148,7 +165,9 @@ void loop() {
           }
         }
       }
-      delay(time); // no else block because delay(0) won't delay at all
+      delay(pauseTime); // no else block because delay(0) won't delay at all
+      count++;
+      go = true;
     }
     
     else if (pCommand.startsWith("ERROR:")) {
@@ -163,6 +182,12 @@ void loop() {
   
 }
 
+void sendPTUCommand(String command) {
+  Serial1.println(command);
+  Serial1.println("A\n");
+  serialEvent();
+}
+
 void serialEvent() { 
   while (!Serial1.available()) {
     // delay until there is a response from the PTU
@@ -174,7 +199,7 @@ void serialEvent() {
     do {
       inStr += Serial1.readString();
     } while (inStr.charAt(inStr.length() - 1) != '\n');
-    if (inStr.indexOf('!') == -1) {
+    if (inStr.indexOf('!') == -1 || inStr.indexOf("!T!") != -1) {
       go = true; // if there is no error, allow the script to continue
       Serial.println(inStr); // give the user feedback from the PTU
     }
@@ -260,7 +285,7 @@ int getAssocInt(String s) {
 void printCommands() {
   Serial.println("Note: Commands are not case-sensitive\n\nUser Commands:");
   Serial.println("RUN X .... Run a script. Only available when the PTU is not running a script.");
-  Serial.println("STOP ..... Immediately halt the PTU at any time");
+  Serial.println("STOP ..... Halt the PTU at any time. The PTU will halt after the current instruction is completed.");
   Serial.println("RESUME ... Resume script from where it was left off. Only available when a script has been suspended by a PAUSE0 command.");
   Serial.println("\nCustom PTU Commands (Can only be used when writing a script):");
   Serial.println("END ...... Tells the controller that the script is over.");
@@ -277,8 +302,7 @@ void resetVars() {
       reset = Serial.readString();
       reset.toUpperCase();
       if (reset.equals("Y")) {
-        Serial1.write("RE\n");
-        serialEvent();
+        sendPTUCommand("RE\n");
         break;
       }
       else if (reset.equals("N")) {
@@ -288,8 +312,7 @@ void resetVars() {
   }
   else {
     Serial.println(errorMsg + "\nThe PTU will now reset.");
-    Serial1.write("RE\n");
-    serialEvent();
+    sendPTUCommand("RE\n");
   }
   go = false;
   exe = false;
@@ -304,7 +327,7 @@ void resetVars() {
   Serial.println(readyMsg);
 }
 
-boolean checkValidity(String inCommand) {
+boolean checkValidity(String inCommand, int line) {
   String outCommand = "";
   String removeList = "0123456789-";
   boolean validity = false;
@@ -313,9 +336,9 @@ boolean checkValidity(String inCommand) {
     return true;
   }
   
-  for (int a = 0; outCommand.equals(""); a++) { // remove the invalid characters from the end of the command
-    if (removeList.indexOf(inCommand.charAt(a)) != -1) {
-      inCommand.remove(a);
+  for (int i = 0; outCommand.equals(""); i++) { // remove the invalid characters from the end of the command
+    if (removeList.indexOf(inCommand.charAt(i)) != -1) {
+      inCommand.remove(i);
       outCommand = inCommand;
       if (outCommand.length() == 0) {
         err = true;
@@ -325,17 +348,18 @@ boolean checkValidity(String inCommand) {
     }
   }
   
-  for (int x = 0; x < 120; x++) { // Check trimmed input against valid commands list
-    if (inCommand.equals(commandList[x])) {
+  for (int i = 0; i < 161; i++) { // Check trimmed input against valid commands list
+    if (inCommand.equals(commandList[i])) {
       validity = true;
-      x = 120;   
+      break;
     }
   }
-  if (validity == true) {
+  if (validity) {
     Serial.println(inCommand + ": VALID COMMAND");
   }
   else {
     Serial.println(inCommand + ": INVALID COMMAND");
   }
+  Serial.print("on line "); Serial.println(line);
   return validity;
 }
